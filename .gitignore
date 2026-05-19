@@ -1,0 +1,55 @@
+# Go build outputs
+terraform-cmdb
+*.exe
+*.test
+*.out
+*.prof
+coverage.out
+bin/
+dist/
+build/
+
+# Runtime state data
+states/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+
+# Terraform working directories and generated files
+.terraform/
+.terraform.lock.hcl
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# JSON files may contain exported Terraform state or inventory data.
+# Keep examples explicitly allowed below.
+*.json
+!example*.json
+!*.example.json
+!examples/**/*.json
+
+# Local env and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and temp files
+*.log
+tmp/
+temp/
