@@ -86,3 +86,51 @@ func TestParseLinksPublicIPAssociationToMachine(t *testing.T) {
 		t.Fatalf("disks = %#v, want root 40 GB gp3", machine.Disks)
 	}
 }
+
+func TestParseVSphereVirtualMachineCPU(t *testing.T) {
+	state := []byte(`{
+  "version": 4,
+  "terraform_version": "1.9.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "vsphere_virtual_machine",
+      "name": "app",
+      "provider": "provider[\"registry.terraform.io/hashicorp/vsphere\"]",
+      "instances": [
+        {
+          "attributes": {
+            "id": "vm-100",
+            "name": "app-01",
+            "num_cpus": 4,
+            "memory": 8192,
+            "default_ip_address": "10.0.1.20",
+            "disk": [
+              {
+                "label": "disk0",
+                "size": 80
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}`)
+
+	result, err := Parse(state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(result.Machines) != 1 {
+		t.Fatalf("machines length = %d, want 1", len(result.Machines))
+	}
+
+	machine := result.Machines[0]
+	if machine.CPUCores != "4" {
+		t.Fatalf("cpu cores = %q, want 4", machine.CPUCores)
+	}
+	if machine.Memory != "8" {
+		t.Fatalf("memory = %q, want 8", machine.Memory)
+	}
+}

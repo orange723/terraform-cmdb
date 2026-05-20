@@ -168,7 +168,7 @@ func buildMachine(resource resourceEntry) inventory.Machine {
 		Zone:            firstString(attrs, "availability_zone", "zone", "placement_availability_zone"),
 		Status:          firstString(attrs, "instance_state", "status", "power_state", "vm_state"),
 		InstanceType:    firstString(attrs, "instance_type", "instance_class", "machine_type", "flavor_name", "size", "vm_size"),
-		CPUCores:        firstString(attrs, "cpu", "cpus", "cpu_core_count", "core_count", "cores", "vcpu", "vcpus", "vcpu_count"),
+		CPUCores:        firstString(attrs, "cpu", "cpus", "num_cpu", "num_cpus", "num_cores", "cpu_core_count", "core_count", "cores", "vcpu", "vcpus", "vcpu_count"),
 		Memory:          firstMemory(attrs),
 		Disks:           collectDisks(attrs),
 		PrivateIPs:      uniqueStrings(collectStringsByKeys(attrs, "private_ip", "private_ip_address", "private_ips", "private_ip_addresses")),
