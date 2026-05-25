@@ -15,6 +15,7 @@
 - 页面支持按机器名称搜索和前端分页，默认每页 10 条。
 - “已加载文件”和单机 attributes 都默认折叠展示。
 - 已提供 Swagger 中文接口文档：`GET /swagger`，OpenAPI JSON：`GET /swagger/openapi.json`。
+- 支持 `go run . export` 静态导出到 `dist/index.html` 和 `dist/instances.json`，用于 Cloudflare Pages 等纯静态托管；静态页面不包含上传、刷新或后端接口。
 
 ## 资产解析约定
 

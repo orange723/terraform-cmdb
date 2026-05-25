@@ -73,6 +73,23 @@ ln -s /path/to/your/terraform-repo states/terraform-repo
 go run .
 ```
 
+静态导出：
+
+```bash
+go run . export
+```
+
+导出结果会写入 `dist/index.html` 和 `dist/instances.json`，可直接部署到 Cloudflare Pages。静态页面只包含导出时的展示数据，不包含上传、刷新或后端接口。
+
+## Cloudflare Pages
+
+项目内置 GitHub Actions workflow，会在 `main` 分支推送后运行 `go run . export` 并把 `dist/` 部署到 Cloudflare Pages。仓库需要配置以下 GitHub Secrets：
+
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
+
+Pages 项目名默认为 `terraform-cmdb`。构建环境没有 `states/` 时会部署空展示页。
+
 测试：
 
 ```bash

@@ -17,6 +17,7 @@ type IndexData struct {
 	Machines     []inventory.Machine
 	LastError    string
 	RawResources int
+	Static       bool
 }
 
 func RenderIndex(data IndexData) string {
@@ -60,7 +61,11 @@ func RenderIndex(data IndexData) string {
 	}
 
 	if len(data.Machines) == 0 {
-		rows.WriteString(`<tr class="empty-row"><td colspan="10" class="px-4 py-16 text-center text-slate-500">还没有实例数据，上传 terraform.tfstate 或 state JSON 后查看。</td></tr>`)
+		emptyText := "还没有实例数据，上传 terraform.tfstate 或 state JSON 后查看。"
+		if data.Static {
+			emptyText = "还没有实例数据，请确认导出时 states 目录里有 Terraform state 文件。"
+		}
+		fmt.Fprintf(&rows, `<tr class="empty-row"><td colspan="10" class="px-4 py-16 text-center text-slate-500">%s</td></tr>`, esc(emptyText))
 	}
 	noResultRow := `<tr id="no-results-row" class="hidden"><td colspan="10" class="px-4 py-16 text-center text-slate-500">没有匹配的机器。</td></tr>`
 
@@ -82,6 +87,25 @@ func RenderIndex(data IndexData) string {
 	if terraformVersion == "" {
 		terraformVersion = "-"
 	}
+	intro := fmt.Sprintf(`把 Terraform state JSON 放到 <code class="rounded bg-slate-200 px-1">%s</code>，刷新后自动解析；也可以临时上传单个文件。`, esc(stateDir))
+	actions := `<div class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:min-w-96">
+        <form action="/reload" method="post">
+          <button class="w-full rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600" type="submit">刷新 states 目录</button>
+        </form>
+        <form action="/upload" method="post" enctype="multipart/form-data" class="flex flex-col gap-3">
+          <input class="block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm" type="file" name="state" accept=".json,.tfstate,application/json" required>
+          <button class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="submit">临时上传单文件</button>
+        </form>
+      </div>`
+	apiLink := `<a class="text-sm font-medium text-blue-600 hover:text-blue-700" href="/api/instances">API JSON</a>`
+	if data.Static {
+		intro = fmt.Sprintf(`静态导出页面，数据来自导出时扫描的 <code class="rounded bg-slate-200 px-1">%s</code>。页面不包含上传、刷新或服务端接口。`, esc(stateDir))
+		actions = `<div class="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm md:min-w-96">
+        <div class="font-medium text-slate-900">静态展示模式</div>
+        <div class="mt-1">重新生成数据请在本地运行 <code class="rounded bg-slate-100 px-1">go run . export</code> 后重新部署。</div>
+      </div>`
+		apiLink = `<a class="text-sm font-medium text-blue-600 hover:text-blue-700" href="instances.json">JSON 数据</a>`
+	}
 
 	return fmt.Sprintf(`<!doctype html>
 <html lang="zh-CN">
@@ -97,17 +121,9 @@ func RenderIndex(data IndexData) string {
       <div>
         <p class="text-sm font-semibold uppercase tracking-wide text-orange-500">Terraform CMDB</p>
         <h1 class="mt-2 text-3xl font-semibold tracking-tight">内网机器资产</h1>
-        <p class="mt-2 text-sm text-slate-500">把 Terraform state JSON 放到 <code class="rounded bg-slate-200 px-1">%s</code>，刷新后自动解析；也可以临时上传单个文件。</p>
+        <p class="mt-2 text-sm text-slate-500">%s</p>
       </div>
-      <div class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:min-w-96">
-        <form action="/reload" method="post">
-          <button class="w-full rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600" type="submit">刷新 states 目录</button>
-        </form>
-        <form action="/upload" method="post" enctype="multipart/form-data" class="flex flex-col gap-3">
-          <input class="block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm" type="file" name="state" accept=".json,.tfstate,application/json" required>
-          <button class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="submit">临时上传单文件</button>
-        </form>
-      </div>
+      %s
     </header>
 
     %s
@@ -140,7 +156,7 @@ func RenderIndex(data IndexData) string {
         </div>
         <div class="flex flex-col gap-2 md:flex-row md:items-center">
           <input id="machine-search" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-orange-400 md:w-72" type="search" placeholder="按机器名称搜索">
-          <a class="text-sm font-medium text-blue-600 hover:text-blue-700" href="/api/instances">API JSON</a>
+          %s
         </div>
       </div>
       <div class="overflow-x-auto">
@@ -243,13 +259,15 @@ func RenderIndex(data IndexData) string {
   </script>
 </body>
 </html>`,
-		esc(stateDir),
+		intro,
+		actions,
 		errorBox,
 		sourceFiles,
 		len(data.Machines),
 		esc(source),
 		esc(terraformVersion),
 		data.RawResources,
+		apiLink,
 		rows.String(),
 		noResultRow,
 	)
