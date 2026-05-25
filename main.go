@@ -15,7 +15,7 @@ import (
 func main() {
 	const stateDir = "states"
 	if len(os.Args) > 1 && os.Args[1] == "export" {
-		if err := exportStatic(stateDir, "dist"); err != nil {
+		if err := exportStatic(stateDir, "examples", "dist"); err != nil {
 			log.Fatalf("export static site: %v", err)
 		}
 		return
@@ -36,8 +36,13 @@ func main() {
 	log.Fatal(app.App().Listen(":3000"))
 }
 
-func exportStatic(stateDir, outputDir string) error {
-	result := statefiles.LoadDirectory(stateDir)
+func exportStatic(stateDir, fallbackDir, outputDir string) error {
+	sourceDir := stateDir
+	result := statefiles.LoadDirectory(sourceDir)
+	if len(result.Snapshot.Machines) == 0 && result.Snapshot.LastError == "" {
+		sourceDir = fallbackDir
+		result = statefiles.LoadDirectory(sourceDir)
+	}
 	snapshot := result.Snapshot
 
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
@@ -47,7 +52,7 @@ func exportStatic(stateDir, outputDir string) error {
 	index := web.RenderIndex(web.IndexData{
 		FileName:     snapshot.FileName,
 		SourceFiles:  snapshot.SourceFiles,
-		StateDir:     stateDir,
+		StateDir:     sourceDir,
 		Terraform:    snapshot.Terraform,
 		Machines:     snapshot.Machines,
 		LastError:    snapshot.LastError,

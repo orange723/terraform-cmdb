@@ -1,0 +1,193 @@
+{
+  "version": 4,
+  "terraform_version": "1.9.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "web",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "attributes": {
+            "id": "i-demo-web-001",
+            "instance_type": "t3.small",
+            "cpu_core_count": 2,
+            "memory": 2048,
+            "private_ip": "10.10.1.11",
+            "public_ip": "3.112.10.11",
+            "region": "ap-northeast-1",
+            "availability_zone": "ap-northeast-1a",
+            "instance_state": "running",
+            "root_block_device": [
+              {
+                "volume_size": 40,
+                "volume_type": "gp3"
+              }
+            ],
+            "tags": {
+              "Name": "aws-web-01",
+              "Env": "demo"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "api",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "attributes": {
+            "id": "i-demo-api-001",
+            "instance_type": "t3.medium",
+            "cpu_core_count": 2,
+            "memory": 4096,
+            "private_ip": "10.10.1.21",
+            "public_ip": "3.112.10.21",
+            "region": "ap-northeast-1",
+            "availability_zone": "ap-northeast-1c",
+            "instance_state": "running",
+            "root_block_device": [
+              {
+                "volume_size": 80,
+                "volume_type": "gp3"
+              }
+            ],
+            "tags": {
+              "Name": "aws-api-01",
+              "Env": "demo"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "worker",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "attributes": {
+            "id": "i-demo-worker-001",
+            "instance_type": "m6i.large",
+            "cpu_core_count": 2,
+            "memory": 8192,
+            "private_ip": "10.10.2.31",
+            "region": "ap-northeast-1",
+            "availability_zone": "ap-northeast-1a",
+            "instance_state": "running",
+            "root_block_device": [
+              {
+                "volume_size": 100,
+                "volume_type": "gp3"
+              }
+            ],
+            "tags": {
+              "Name": "aws-worker-01",
+              "Env": "demo"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_compute_instance",
+      "name": "web",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "attributes": {
+            "id": "projects/demo/zones/asia-northeast1-a/instances/gcp-web-01",
+            "name": "gcp-web-01",
+            "machine_type": "e2-small",
+            "cpu": 2,
+            "memory_gb": 2,
+            "private_ip": "10.20.1.11",
+            "public_ip": "35.200.10.11",
+            "region": "asia-northeast1",
+            "zone": "asia-northeast1-a",
+            "status": "RUNNING",
+            "boot_disk": [
+              {
+                "disk_size_gb": 30,
+                "type": "pd-balanced"
+              }
+            ],
+            "labels": {
+              "env": "demo",
+              "role": "web"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_compute_instance",
+      "name": "api",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "attributes": {
+            "id": "projects/demo/zones/asia-northeast1-b/instances/gcp-api-01",
+            "name": "gcp-api-01",
+            "machine_type": "e2-medium",
+            "cpu": 2,
+            "memory_gb": 4,
+            "private_ip": "10.20.1.21",
+            "public_ip": "35.200.10.21",
+            "region": "asia-northeast1",
+            "zone": "asia-northeast1-b",
+            "status": "RUNNING",
+            "boot_disk": [
+              {
+                "disk_size_gb": 50,
+                "type": "pd-balanced"
+              }
+            ],
+            "labels": {
+              "env": "demo",
+              "role": "api"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "google_compute_instance",
+      "name": "worker",
+      "provider": "provider[\"registry.terraform.io/hashicorp/google\"]",
+      "instances": [
+        {
+          "attributes": {
+            "id": "projects/demo/zones/asia-northeast1-c/instances/gcp-worker-01",
+            "name": "gcp-worker-01",
+            "machine_type": "e2-standard-2",
+            "cpu": 2,
+            "memory_gb": 8,
+            "private_ip": "10.20.2.31",
+            "region": "asia-northeast1",
+            "zone": "asia-northeast1-c",
+            "status": "RUNNING",
+            "boot_disk": [
+              {
+                "disk_size_gb": 100,
+                "type": "pd-ssd"
+              }
+            ],
+            "labels": {
+              "env": "demo",
+              "role": "worker"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

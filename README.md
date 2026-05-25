@@ -83,12 +83,13 @@ go run . export
 
 ## Cloudflare Pages
 
-项目内置 GitHub Actions workflow，会在 `main` 分支推送后运行 `go run . export` 并把 `dist/` 部署到 Cloudflare Pages。仓库需要配置以下 GitHub Secrets：
+Cloudflare Pages 可以直接连接 GitHub 仓库构建。推荐配置：
 
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_API_TOKEN`
+- Build command：`go run . export`
+- Deploy command：`npx wrangler@latest pages deploy dist --project-name terraform-cmdb`
+- Build output directory：`dist`
 
-Pages 项目名默认为 `terraform-cmdb`。构建环境没有 `states/` 时会部署空展示页。
+构建环境没有 `states/` 时，静态导出会回退到 `examples/demo.example.json`，生成 3 台 AWS 和 3 台 GCP 的演示数据。
 
 测试：
 
