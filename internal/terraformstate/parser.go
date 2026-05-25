@@ -1,8 +1,12 @@
 package terraformstate
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"sort"
@@ -10,6 +14,8 @@ import (
 	"strings"
 
 	"terraform-cmdb/internal/inventory"
+
+	"gopkg.in/yaml.v3"
 )
 
 type ParseResult struct {
@@ -71,8 +77,10 @@ func Parse(content []byte) (ParseResult, error) {
 	}
 
 	resources := collectResources(state)
+	allResources := collectAllResources(state)
 	machines := buildMachines(resources)
 	linkPublicIPs(resources, machines)
+	enrichVSphereHostRegions(allResources, machines)
 
 	sort.SliceStable(machines, func(i, j int) bool {
 		left := strings.ToLower(machines[i].Provider + machines[i].Name + machines[i].ResourceAddress)
@@ -88,9 +96,17 @@ func Parse(content []byte) (ParseResult, error) {
 }
 
 func collectResources(state stateFile) []resourceEntry {
+	return collectResourcesByMode(state, false)
+}
+
+func collectAllResources(state stateFile) []resourceEntry {
+	return collectResourcesByMode(state, true)
+}
+
+func collectResourcesByMode(state stateFile, includeData bool) []resourceEntry {
 	var resources []resourceEntry
 	for _, resource := range state.Resources {
-		if !isManaged(resource.Mode) {
+		if !isSupportedMode(resource.Mode, includeData) {
 			continue
 		}
 		for _, instance := range resource.Instances {
@@ -109,14 +125,14 @@ func collectResources(state stateFile) []resourceEntry {
 	}
 
 	if state.Values != nil {
-		collectValueResources(state.Values.RootModule, &resources)
+		collectValueResources(state.Values.RootModule, &resources, includeData)
 	}
 	return resources
 }
 
-func collectValueResources(module valueModule, resources *[]resourceEntry) {
+func collectValueResources(module valueModule, resources *[]resourceEntry, includeData bool) {
 	for _, resource := range module.Resources {
-		if !isManaged(resource.Mode) || len(resource.Values) == 0 {
+		if !isSupportedMode(resource.Mode, includeData) || len(resource.Values) == 0 {
 			continue
 		}
 		address := resource.Address
@@ -132,7 +148,7 @@ func collectValueResources(module valueModule, resources *[]resourceEntry) {
 	}
 
 	for _, child := range module.ChildModules {
-		collectValueResources(child, resources)
+		collectValueResources(child, resources, includeData)
 	}
 }
 
@@ -157,6 +173,11 @@ func resourceAddress(resourceType, resourceName string, indexKey any) string {
 
 func buildMachine(resource resourceEntry) inventory.Machine {
 	attrs := resource.Attributes
+	privateIPs := collectStringsByKeys(attrs, "private_ip", "private_ip_address", "private_ips", "private_ip_addresses")
+	if resource.Type == "vsphere_virtual_machine" {
+		privateIPs = append(privateIPs, vspherePrivateIPs(attrs)...)
+	}
+
 	machine := inventory.Machine{
 		ID:              firstString(attrs, "id", "instance_id", "vm_id", "server_id", "urn", "arn"),
 		Name:            firstString(attrs, "name", "instance_name", "computer_name", "hostname", "display_name", "vm_name"),
@@ -171,7 +192,7 @@ func buildMachine(resource resourceEntry) inventory.Machine {
 		CPUCores:        firstString(attrs, "cpu", "cpus", "num_cpu", "num_cpus", "num_cores", "cpu_core_count", "core_count", "cores", "vcpu", "vcpus", "vcpu_count"),
 		Memory:          firstMemory(attrs),
 		Disks:           collectDisks(attrs),
-		PrivateIPs:      uniqueStrings(collectStringsByKeys(attrs, "private_ip", "private_ip_address", "private_ips", "private_ip_addresses")),
+		PrivateIPs:      uniqueStrings(privateIPs),
 		PublicIPs:       uniqueStrings(collectStringsByKeys(attrs, "public_ip", "public_ip_address", "public_ips", "public_ip_addresses", "ipv4_address", "access_ip_v4")),
 		Tags:            firstMap(attrs, "tags", "labels", "metadata"),
 		Attributes:      maps.Clone(attrs),
@@ -190,6 +211,228 @@ func buildMachine(resource resourceEntry) inventory.Machine {
 	machine.PrivateIPs = filterIPs(machine.PrivateIPs, true)
 	machine.PublicIPs = filterIPs(machine.PublicIPs, false)
 	return machine
+}
+
+func vspherePrivateIPs(attrs map[string]any) []string {
+	privateIPs := collectStringsByKeys(attrs, "default_ip_address", "guest_ip_addresses")
+
+	for _, config := range vsphereGuestInfoConfigs(attrs) {
+		for _, key := range []string{"guestinfo.metadata", "guestinfo.userdata", "guestinfo.vendordata", "metadata", "userdata", "user_data"} {
+			payload := firstString(config, key)
+			if payload == "" {
+				continue
+			}
+
+			encoding := firstString(config, key+".encoding")
+			decoded := decodeVSphereGuestInfo(payload, encoding)
+			privateIPs = append(privateIPs, privateIPsFromCloudInit(decoded)...)
+		}
+	}
+
+	return uniqueStrings(privateIPs)
+}
+
+func enrichVSphereHostRegions(resources []resourceEntry, machines []inventory.Machine) {
+	hostNamesByID := vsphereHostNamesByID(resources)
+	for idx := range machines {
+		if machines[idx].ResourceType != "vsphere_virtual_machine" {
+			continue
+		}
+		host := vsphereMachineHost(machines[idx].Attributes, hostNamesByID)
+		if host != "" {
+			machines[idx].Region = host
+		}
+	}
+}
+
+func vsphereHostNamesByID(resources []resourceEntry) map[string]string {
+	hosts := map[string]string{}
+	for _, resource := range resources {
+		if resource.Type != "vsphere_host" {
+			continue
+		}
+
+		name := firstString(resource.Attributes, "name", "host_name")
+		if name == "" {
+			continue
+		}
+		for _, id := range collectStringsByKeys(resource.Attributes, "id", "moid", "host_system_id") {
+			id = strings.TrimSpace(id)
+			if id != "" {
+				hosts[id] = name
+			}
+		}
+	}
+	return hosts
+}
+
+func vsphereMachineHost(attrs map[string]any, hostNamesByID map[string]string) string {
+	hostID := firstString(attrs, "host_system_id", "host_id", "esxi_host_id")
+	if hostID != "" {
+		if name := hostNamesByID[hostID]; name != "" {
+			return name
+		}
+	}
+
+	return firstNonEmpty(
+		firstString(attrs, "host_system_name", "host_name", "esxi_host", "esxi_host_name"),
+		hostID,
+	)
+}
+
+func vsphereGuestInfoConfigs(attrs map[string]any) []map[string]any {
+	configs := []map[string]any{attrs}
+	for _, key := range []string{"extra_config", "vapp"} {
+		for _, config := range mapsFromAny(attrs[key]) {
+			configs = append(configs, config)
+			for _, properties := range mapsFromAny(config["properties"]) {
+				configs = append(configs, properties)
+			}
+		}
+	}
+	return configs
+}
+
+func decodeVSphereGuestInfo(value, encoding string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	normalizedEncoding := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(encoding), " ", ""))
+	if strings.Contains(normalizedEncoding, "base64") {
+		decoded, err := decodeBase64Text(value)
+		if err != nil {
+			return value
+		}
+		if strings.Contains(normalizedEncoding, "gzip") {
+			if unzipped, err := gunzip(decoded); err == nil {
+				decoded = unzipped
+			}
+		}
+		return string(decoded)
+	}
+
+	if decoded, err := decodeBase64Text(value); err == nil && looksLikeCloudInit(string(decoded)) {
+		return string(decoded)
+	}
+	return value
+}
+
+func decodeBase64Text(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	for _, encoding := range []*base64.Encoding{
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+		base64.URLEncoding,
+		base64.RawURLEncoding,
+	} {
+		decoded, err := encoding.DecodeString(value)
+		if err == nil {
+			return decoded, nil
+		}
+	}
+	return nil, fmt.Errorf("base64 decode failed")
+}
+
+func gunzip(value []byte) ([]byte, error) {
+	reader, err := gzip.NewReader(bytes.NewReader(value))
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	return io.ReadAll(reader)
+}
+
+func privateIPsFromCloudInit(content string) []string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil
+	}
+
+	decoder := yaml.NewDecoder(strings.NewReader(content))
+	var privateIPs []string
+	for {
+		var document any
+		if err := decoder.Decode(&document); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil
+		}
+		privateIPs = append(privateIPs, privateIPsFromCloudInitValue(document, nil, 0)...)
+	}
+	return filterIPs(privateIPs, true)
+}
+
+func privateIPsFromCloudInitValue(value any, path []string, depth int) []string {
+	if depth > 4 {
+		return nil
+	}
+
+	var privateIPs []string
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, childValue := range typed {
+			lowerKey := strings.ToLower(strings.TrimSpace(key))
+			childPath := append(path, lowerKey)
+			if isCloudInitIPKey(lowerKey, childPath) {
+				privateIPs = append(privateIPs, flattenStrings(childValue)...)
+			}
+			privateIPs = append(privateIPs, privateIPsFromCloudInitValue(childValue, childPath, depth+1)...)
+		}
+	case map[any]any:
+		converted := make(map[string]any, len(typed))
+		for key, childValue := range typed {
+			converted[fmt.Sprint(key)] = childValue
+		}
+		privateIPs = append(privateIPs, privateIPsFromCloudInitValue(converted, path, depth+1)...)
+	case []any:
+		for _, childValue := range typed {
+			privateIPs = append(privateIPs, privateIPsFromCloudInitValue(childValue, path, depth+1)...)
+		}
+	case string:
+		if looksLikeCloudInit(typed) {
+			privateIPs = append(privateIPs, privateIPsFromCloudInit(typed)...)
+		}
+	}
+	return privateIPs
+}
+
+func isCloudInitIPKey(key string, path []string) bool {
+	if pathContainsAny(path, "nameserver", "nameservers", "gateway", "gateway4", "gateway6", "route", "routes") {
+		return false
+	}
+	if key == "addresses" {
+		return true
+	}
+	if key == "address" || key == "ip" || key == "ip_address" || key == "ipv4_address" {
+		return pathContainsAny(path, "network", "ethernets", "interfaces", "subnets", "network_config")
+	}
+	return false
+}
+
+func pathContainsAny(path []string, needles ...string) bool {
+	for _, part := range path {
+		for _, needle := range needles {
+			if strings.Contains(part, needle) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func looksLikeCloudInit(value string) bool {
+	value = strings.TrimSpace(value)
+	if !strings.Contains(value, "\n") {
+		return false
+	}
+	lower := strings.ToLower(value)
+	return strings.Contains(lower, "network:") ||
+		strings.Contains(lower, "addresses:") ||
+		strings.Contains(lower, "address:") ||
+		strings.Contains(lower, "#cloud-config")
 }
 
 func linkPublicIPs(resources []resourceEntry, machines []inventory.Machine) {
@@ -321,6 +564,13 @@ func isPublicIPAssociationResource(resourceType string) bool {
 
 func isManaged(mode string) bool {
 	return mode == "" || mode == "managed"
+}
+
+func isSupportedMode(mode string, includeData bool) bool {
+	if isManaged(mode) {
+		return true
+	}
+	return includeData && mode == "data"
 }
 
 func isMachineResource(resourceType string) bool {

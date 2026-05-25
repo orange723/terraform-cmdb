@@ -20,6 +20,8 @@
 
 - 优先识别常见机器资源，例如 `aws_instance`、`alicloud_instance`、`tencentcloud_instance`、`azurerm_linux_virtual_machine`、`google_compute_instance`、`vsphere_virtual_machine`、`openstack_compute_instance_v2` 等。
 - 公网 IP 需要从独立公网 IP 资源和 association 资源回填，例如通过 `instance_id`、`allocation_id`、`eip_id` 等字段关联机器。
+- vSphere 机器会额外从 `default_ip_address`、`guest_ip_addresses`、`guestinfo.metadata`、`guestinfo.userdata` 中提取私网 IP；`guestinfo.*` 支持 base64 和 gzip+base64 的 cloud-init 网络配置。
+- vSphere 机器的区域字段用于展示所在宿主机，优先通过 `data.vsphere_host` 把 `host_system_id` 转成主机名，否则显示 `host_system_id`。
 - CPU、内存、磁盘只从 state 已有字段提取；如果 state 里只有实例规格名，暂时不通过云厂商规格表或 API 反查。
 - 内存统一按 GB 展示，表头为 `内存(G)`，行内只显示数值。
 - 详情里保留完整 Terraform attributes，方便排查不同云厂商字段差异。

@@ -1,6 +1,10 @@
 package terraformstate
 
-import "testing"
+import (
+	"encoding/base64"
+	"fmt"
+	"testing"
+)
 
 func TestParseLinksPublicIPAssociationToMachine(t *testing.T) {
 	state := []byte(`{
@@ -132,5 +136,154 @@ func TestParseVSphereVirtualMachineCPU(t *testing.T) {
 	}
 	if machine.Memory != "8" {
 		t.Fatalf("memory = %q, want 8", machine.Memory)
+	}
+	if len(machine.PrivateIPs) != 1 || machine.PrivateIPs[0] != "10.0.1.20" {
+		t.Fatalf("private IPs = %#v, want [10.0.1.20]", machine.PrivateIPs)
+	}
+}
+
+func TestParseVSphereCloudInitMetadataPrivateIP(t *testing.T) {
+	metadata := base64.StdEncoding.EncodeToString([]byte(`instance-id: app-01
+local-hostname: app-01
+network:
+  version: 2
+  ethernets:
+    ens192:
+      dhcp4: false
+      addresses:
+        - 10.0.1.20/24
+      gateway4: 10.0.1.1
+      nameservers:
+        addresses:
+          - 10.0.1.53
+`))
+
+	state := []byte(fmt.Sprintf(`{
+  "version": 4,
+  "terraform_version": "1.9.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "vsphere_virtual_machine",
+      "name": "app",
+      "provider": "provider[\"registry.terraform.io/hashicorp/vsphere\"]",
+      "instances": [
+        {
+          "attributes": {
+            "id": "vm-100",
+            "name": "app-01",
+            "extra_config": {
+              "guestinfo.metadata": %q,
+              "guestinfo.metadata.encoding": "base64"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}`, metadata))
+
+	result, err := Parse(state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(result.Machines) != 1 {
+		t.Fatalf("machines length = %d, want 1", len(result.Machines))
+	}
+
+	machine := result.Machines[0]
+	if len(machine.PrivateIPs) != 1 || machine.PrivateIPs[0] != "10.0.1.20" {
+		t.Fatalf("private IPs = %#v, want [10.0.1.20]", machine.PrivateIPs)
+	}
+}
+
+func TestParseVSphereHostSystemIDAsRegion(t *testing.T) {
+	state := []byte(`{
+  "version": 4,
+  "terraform_version": "1.9.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "vsphere_virtual_machine",
+      "name": "app",
+      "provider": "provider[\"registry.terraform.io/hashicorp/vsphere\"]",
+      "instances": [
+        {
+          "attributes": {
+            "id": "vm-100",
+            "name": "app-01",
+            "host_system_id": "host-42"
+          }
+        }
+      ]
+    }
+  ]
+}`)
+
+	result, err := Parse(state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(result.Machines) != 1 {
+		t.Fatalf("machines length = %d, want 1", len(result.Machines))
+	}
+
+	machine := result.Machines[0]
+	if machine.Region != "host-42" {
+		t.Fatalf("region = %q, want host-42", machine.Region)
+	}
+}
+
+func TestParseVSphereHostDataSourceNameAsRegion(t *testing.T) {
+	state := []byte(`{
+  "version": 4,
+  "terraform_version": "1.9.0",
+  "resources": [
+    {
+      "mode": "data",
+      "type": "vsphere_host",
+      "name": "esxi",
+      "provider": "provider[\"registry.terraform.io/hashicorp/vsphere\"]",
+      "instances": [
+        {
+          "attributes": {
+            "id": "host-42",
+            "name": "esxi-01.lab.local"
+          }
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "vsphere_virtual_machine",
+      "name": "app",
+      "provider": "provider[\"registry.terraform.io/hashicorp/vsphere\"]",
+      "instances": [
+        {
+          "attributes": {
+            "id": "vm-100",
+            "name": "app-01",
+            "host_system_id": "host-42"
+          }
+        }
+      ]
+    }
+  ]
+}`)
+
+	result, err := Parse(state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if result.RawResources != 1 {
+		t.Fatalf("raw resources = %d, want 1", result.RawResources)
+	}
+	if len(result.Machines) != 1 {
+		t.Fatalf("machines length = %d, want 1", len(result.Machines))
+	}
+
+	machine := result.Machines[0]
+	if machine.Region != "esxi-01.lab.local" {
+		t.Fatalf("region = %q, want esxi-01.lab.local", machine.Region)
 	}
 }

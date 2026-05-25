@@ -52,6 +52,8 @@ ln -s /path/to/your/terraform-repo states/terraform-repo
 - 每台机器可展开查看完整 Terraform attributes。
 - 公网 IP 会从 EIP、public IP、floating IP 和 association 类资源中尝试回填。
 - CPU、内存、磁盘会从 state 中已有字段提取。
+- vSphere 机器会额外从 `default_ip_address`、`guest_ip_addresses` 以及 `guestinfo.metadata` / `guestinfo.userdata` 的 cloud-init 网络配置中提取内网 IP。
+- vSphere 机器的“区域”列会显示运行宿主机；如果 state 里有 `data.vsphere_host`，会优先显示宿主机名，否则显示 `host_system_id`。
 - Swagger 中文接口文档：http://127.0.0.1:3000/swagger
 
 ## 接口
@@ -99,3 +101,5 @@ Release assets 会包含：
 优先识别常见机器资源，例如 `aws_instance`、`alicloud_instance`、`tencentcloud_instance`、`azurerm_linux_virtual_machine`、`google_compute_instance`、`vsphere_virtual_machine`、`openstack_compute_instance_v2` 等。
 
 CPU、内存、磁盘只从 Terraform state 已有字段提取，例如 `cpu`、`cpu_core_count`、`memory`、`memory_gb`、`system_disk_size`、`root_block_device`、`data_disks` 等。如果 state 里只有实例规格名但没有展开资源配置，暂时不会通过云厂商规格表反查。
+
+vSphere 场景会做少量特殊处理：支持解码 base64 或 gzip+base64 的 `guestinfo.metadata` / `guestinfo.userdata`，从 cloud-init 网络 YAML 中提取静态内网 IP；同时会把 `host_system_id` 或关联的 `vsphere_host` data source 名称展示到区域列，便于查看机器所在 ESXi 主机。
