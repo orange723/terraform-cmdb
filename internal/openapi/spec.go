@@ -1,12 +1,14 @@
 package openapi
 
+import "terraform-cmdb/internal/version"
+
 func Spec() map[string]any {
 	return map[string]any{
 		"openapi": "3.0.3",
 		"info": map[string]any{
 			"title":       "Terraform CMDB API",
 			"description": "通过 Terraform state 文件解析并展示内网机器资产的接口文档。",
-			"version":     "0.1.0",
+			"version":     version.Version,
 		},
 		"tags": []map[string]any{
 			{

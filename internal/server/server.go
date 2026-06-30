@@ -86,16 +86,7 @@ func (s *Server) handleOpenAPI(c fiber.Ctx) error {
 
 // handleInstances 返回当前内存中的机器资产 JSON。
 func (s *Server) handleInstances(c fiber.Ctx) error {
-	snapshot := s.store.Snapshot()
-
-	return c.JSON(fiber.Map{
-		"file_name":     snapshot.FileName,
-		"terraform":     snapshot.Terraform,
-		"raw_resources": snapshot.RawResources,
-		"count":         len(snapshot.Machines),
-		"source_files":  snapshot.SourceFiles,
-		"instances":     snapshot.Machines,
-	})
+	return c.JSON(inventory.InstancesPayload(s.store.Snapshot()))
 }
 
 // handleUpload 接收单个 Terraform state 文件并临时替换当前资产数据。
@@ -117,16 +108,16 @@ func (s *Server) handleUpload(c fiber.Ctx) error {
 	}
 
 	result, err := terraformstate.Parse(content)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
+	}
+
 	s.store.Replace(inventory.Snapshot{
 		FileName:     file.Filename,
 		Terraform:    result.Terraform,
 		RawResources: result.RawResources,
 		Machines:     result.Machines,
-		LastError:    errorString(err),
 	})
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
-	}
 
 	return c.Redirect().To("/")
 }
@@ -140,13 +131,6 @@ func (s *Server) handleReload(c fiber.Ctx) error {
 func (s *Server) LoadStateDirectory() {
 	result := statefiles.LoadDirectory(s.stateDir)
 	s.store.Replace(result.Snapshot)
-}
-
-func errorString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }
 
 func swaggerHTML() string {
