@@ -14,6 +14,8 @@ tar -xzf terraform-cmdb_<version>_<os>_<arch>.tar.gz
 
 打开 http://127.0.0.1:3000 查看资产。
 
+程序默认监听 `127.0.0.1:3000`，可通过环境变量 `LISTEN_ADDR` 修改，例如 `LISTEN_ADDR=0.0.0.0:8080 ./terraform-cmdb`。
+
 程序启动时会自动创建并读取当前目录下的 `states` 目录。
 
 ## 准备 State 文件

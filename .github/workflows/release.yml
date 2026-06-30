@@ -46,7 +46,7 @@ jobs:
             mkdir -p "dist/${package}"
 
             CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
-              go build -trimpath -ldflags="-s -w" -o "dist/${package}/terraform-cmdb" .
+              go build -trimpath -ldflags="-s -w -X terraform-cmdb/internal/version.Version=${version#v}" -o "dist/${package}/terraform-cmdb" .
 
             tar -C "dist/${package}" -czf "dist/${package}.tar.gz" terraform-cmdb
             rm -rf "dist/${package}"

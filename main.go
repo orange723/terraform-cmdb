@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"terraform-cmdb/internal/inventory"
 	"terraform-cmdb/internal/server"
@@ -32,8 +34,25 @@ func main() {
 	})
 	app.LoadStateDirectory()
 
-	log.Println("terraform-cmdb listening on http://127.0.0.1:3000")
-	log.Fatal(app.App().Listen(":3000"))
+	listenAddr := os.Getenv("LISTEN_ADDR")
+	if listenAddr == "" {
+		listenAddr = "127.0.0.1:3000"
+	}
+
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		log.Println("shutting down...")
+		if err := app.App().Shutdown(); err != nil {
+			log.Printf("shutdown: %v", err)
+		}
+	}()
+
+	log.Printf("terraform-cmdb listening on http://%s", listenAddr)
+	if err := app.App().Listen(listenAddr); err != nil {
+		log.Fatalf("listen: %v", err)
+	}
 }
 
 func exportStatic(stateDir, fallbackDir, outputDir string) error {
@@ -63,15 +82,7 @@ func exportStatic(stateDir, fallbackDir, outputDir string) error {
 		return err
 	}
 
-	payload := map[string]any{
-		"file_name":     snapshot.FileName,
-		"terraform":     snapshot.Terraform,
-		"raw_resources": snapshot.RawResources,
-		"count":         len(snapshot.Machines),
-		"source_files":  snapshot.SourceFiles,
-		"instances":     snapshot.Machines,
-	}
-	instances, err := json.MarshalIndent(payload, "", "  ")
+	instances, err := json.MarshalIndent(inventory.InstancesPayload(snapshot), "", "  ")
 	if err != nil {
 		return err
 	}
